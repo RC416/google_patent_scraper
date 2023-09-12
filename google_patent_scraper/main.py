@@ -55,11 +55,12 @@ class scraper_class:
         - return_abstract (bool) : boolean for whether the code should return the abstract  
 
     """
-    def __init__(self,return_abstract=False):
+    def __init__(self,return_abstract=True, return_claims=True):
         self.list_of_patents = []
         self.scrape_status = {}
         self.parsed_patents = {}
         self.return_abstract = return_abstract
+        self.return_claims = return_claims
 
     def add_patents(self, patent):
         """Append patent to patent list attribute self.list_of_patents
@@ -273,7 +274,6 @@ class scraper_class:
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
         #  Get claims (not part of original fork)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-        claims_text = ''
         if self.return_claims:
             
             # Get claims
@@ -283,16 +283,12 @@ class scraper_class:
 
             if claims_divs:
                 for claim in claims_divs:
-                    claim_id = claim['id']
-                    claim_num = claim['num']
                     claim_texts = claim.find_all('div', class_='claim-text')
                     # Combine the text content of each 'claim-text' div for the particular claim
                     claim_text = ' '.join([text.get_text(strip=True) for text in claim_texts])
                     
                     # Add claim details to the list
                     claims_list.append({
-                        'id': claim_id,
-                        'num': claim_num,
                         'text': claim_text
                     })
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -312,7 +308,7 @@ class scraper_class:
                 'abstract_text':abstract_text,
                 'claims_text':claims_list})
 
-    def get_scraped_data(self,soup,patent,url):
+    def get_scraped_data(self,soup, patent = "", url = ""):
         # ~~ Parse individual patent ~~ #
         parsing_individ_patent = self.process_patent_html(soup)
         # ~~ Add url + patent to dictionary ~~ #
