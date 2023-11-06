@@ -114,7 +114,7 @@ class scraper_class:
                 url='https://patents.google.com/patent/{0}'.format(patent)
             else:
                 url=patent
-            print(url)
+            #print(url)
             req = Request(url,headers={'User-Agent': 'Mozilla/5.0'})
             webpage = urlopen(req).read()
             soup = BeautifulSoup(webpage, features="lxml")
@@ -266,7 +266,8 @@ class scraper_class:
         abstract_text=''
         if self.return_abstract:
             # Get abstract # 
-            abstract = soup.find('meta',attrs={'name':'DC.description'})
+            abstract = soup.find(lambda tag: (tag.name == 'meta' and 
+                                     tag.get('name') in ['DC.description', 'description']))
             # Get text 
             if abstract:
                 abstract_text=abstract['content']
@@ -275,22 +276,70 @@ class scraper_class:
         #  Get claims (not part of original fork)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
         if self.return_claims:
-            
-            # Get claims
+            # Get claims section
             claims_section = soup.find('section', itemprop='claims')
-            claims_divs = claims_section.find_all('div', class_='claim')
             claims_list = []
 
-            if claims_divs:
-                for claim in claims_divs:
-                    claim_texts = claim.find_all('div', class_='claim-text')
-                    # Combine the text content of each 'claim-text' div for the particular claim
-                    claim_text = ' '.join([text.get_text(strip=True) for text in claim_texts])
-                    
-                    # Add claim details to the list
-                    claims_list.append({
-                        'text': claim_text
-                    })
+            if claims_section:
+                # Try the first type (using <claim> tags)
+                claim_tags = claims_section.find_all('claim') + soup.find_all('claim-text')
+
+        
+                for claim_tag in claim_tags:
+                    # Find the 'notranslate' span if available, else find 'claim-text'
+                    claim_text_tag = claim_tag.find('span', class_='notranslate') or claim_tag.find('div', class_='claim-text')
+        
+                    if claim_text_tag:
+                        # Explicitly extract the 'google-src-text' span to remove the original text
+                        google_src_text = claim_text_tag.find('span', class_='google-src-text')
+                        if google_src_text:
+                            google_src_text.extract()
+
+                        # Extract and strip the text
+                        claim_text = claim_text_tag.get_text(strip=True)
+        
+                        # Add claim details to the list
+                        claims_list.append({
+                            'text': claim_text
+                        })
+
+                
+                # If the first method didn't fetch any results, try the second type (using <div class="claim"> tags)
+                claims_divs = []
+                claim_divs = False
+                if not claims_list:
+                    claim_divs = claims_section.find_all('div', class_='claim', recursive=True)
+
+
+                if claim_divs:
+                    for outer_claim in claim_divs:
+                        # Get all direct child divs with class 'claim-text'
+                        claim_text_divs = outer_claim.find_all('div', class_='claim-text', recursive=True)
+                        
+                        # Extract the text from each div and join them together
+                        claim_text = ' '.join([div.get_text(strip=True) for div in claim_text_divs])
+                        
+                        claims_list.append({'text': claim_text})
+
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+        #  Get claims for Japanese patents (not part of original fork)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+        """
+        english_claims_text = ''
+        if claims_list == [] and abstract_text == '':
+		
+            # Japanese claims.
+            claims_texts = soup.find_all('claim-text')
+            
+            for claim_text in claims_texts:
+                    japanese_span = claim_text.find('span', class_='google-src-text')
+                    if japanese_span and japanese_span.next_sibling:
+                        english_claims_text += japanese_span.next_sibling.strip()   
+
+            claims_list = [{"text": english_claims_text}]
+        """
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
         #  Return data as a dictionary
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -306,7 +355,7 @@ class scraper_class:
                 'backward_cite_no_family':json.dumps(backward_cites_no_family),
                 'backward_cite_yes_family':json.dumps(backward_cites_yes_family),
                 'abstract_text':abstract_text,
-                'claims_text':claims_list})
+                'claims':claims_list})
 
     def get_scraped_data(self,soup, patent = "", url = ""):
         # ~~ Parse individual patent ~~ #
